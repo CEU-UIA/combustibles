@@ -1249,48 +1249,74 @@ def fetch_dolar_oficial_bcra(start_date=None) -> pd.DataFrame:
     )
 
 
-def build_combustible_fx_df(df_plot):
-    out = df_plot.copy()
+def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
+    if df_plot.empty:
+        return pd.DataFrame()
 
-    # === armás acá tu dataframe de FX como ya lo venías haciendo ===
-    # por ejemplo:
-    # fx = ...
-    # ---------------------------------------------------------------
-
-    # 1) Normalizar tipos de fecha
+    out = df_plot[["fecha", "precio_promedio"]].copy()
     out["fecha"] = pd.to_datetime(out["fecha"], errors="coerce")
-    fx["fecha"] = pd.to_datetime(fx["fecha"], errors="coerce")
-
-    # 2) Sacar timezone si alguna serie lo trae
-    if getattr(out["fecha"].dt, "tz", None) is not None:
-        out["fecha"] = out["fecha"].dt.tz_localize(None)
-
-    if getattr(fx["fecha"].dt, "tz", None) is not None:
-        fx["fecha"] = fx["fecha"].dt.tz_localize(None)
-
-    # 3) Normalizar a fecha diaria
-    out["fecha"] = out["fecha"].dt.normalize()
-    fx["fecha"] = fx["fecha"].dt.normalize()
-
-    # 4) Eliminar fechas inválidas
-    out = out.dropna(subset=["fecha"]).copy()
-    fx = fx.dropna(subset=["fecha"]).copy()
-
-    # 5) Ordenar
-    out = out.sort_values("fecha").copy()
-    fx = fx.sort_values("fecha").copy()
-
-    # 6) Evitar duplicados en el lado derecho
-    fx = fx.drop_duplicates(subset=["fecha"], keep="last").copy()
-
-    # 7) merge_asof
-    out = pd.merge_asof(
-        out,
-        fx,
-        on="fecha",
-        direction="backward"
+    out = (
+        out.dropna(subset=["fecha"])
+           .sort_values("fecha")
+           .copy()
     )
 
+    if out.empty:
+        return pd.DataFrame(columns=["fecha", "precio_promedio", "ccl_ypf", "oficial", "usd_ccl", "usd_oficial"])
+
+    start_date = out["fecha"].min() - pd.Timedelta(days=15)
+
+    ccl_df = fetch_ccl_ypf(start_date=start_date)
+    ofi_df = fetch_dolar_oficial_bcra(start_date=start_date)
+
+    if not ccl_df.empty:
+        ccl_df = ccl_df.copy()
+        ccl_df["fecha"] = pd.to_datetime(ccl_df["fecha"], errors="coerce")
+        ccl_df = (
+            ccl_df.dropna(subset=["fecha"])
+                  .sort_values("fecha")
+                  .drop_duplicates(subset=["fecha"], keep="last")
+                  .copy()
+        )
+
+        if not ccl_df.empty:
+            out = pd.merge_asof(
+                out.sort_values("fecha"),
+                ccl_df.sort_values("fecha"),
+                on="fecha",
+                direction="backward"
+            )
+        else:
+            out["ccl_ypf"] = np.nan
+    else:
+        out["ccl_ypf"] = np.nan
+
+    if not ofi_df.empty:
+        ofi_df = ofi_df.copy()
+        ofi_df["fecha"] = pd.to_datetime(ofi_df["fecha"], errors="coerce")
+        ofi_df = (
+            ofi_df.dropna(subset=["fecha"])
+                  .sort_values("fecha")
+                  .drop_duplicates(subset=["fecha"], keep="last")
+                  .copy()
+        )
+
+        if not ofi_df.empty:
+            out = pd.merge_asof(
+                out.sort_values("fecha"),
+                ofi_df.sort_values("fecha"),
+                on="fecha",
+                direction="backward"
+            )
+        else:
+            out["oficial"] = np.nan
+    else:
+        out["oficial"] = np.nan
+
+    out["usd_ccl"] = out["precio_promedio"] / out["ccl_ypf"]
+    out["usd_oficial"] = out["precio_promedio"] / out["oficial"]
+
+    out = out.replace([np.inf, -np.inf], np.nan)
     return out
 
 
