@@ -1253,21 +1253,19 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
     if df_plot.empty:
         return pd.DataFrame()
 
-    def _prep_fecha(df: pd.DataFrame, col: str = "fecha") -> pd.DataFrame:
+    def _prep_df(df: pd.DataFrame, fecha_col: str = "fecha") -> pd.DataFrame:
         df = df.copy()
-        df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
-        df[col] = df[col].dt.tz_localize(None)
-        df[col] = df[col].dt.normalize()
-        df = (
-            df.dropna(subset=[col])
-              .sort_values(col)
-              .drop_duplicates(subset=[col], keep="last")
-              .copy()
-        )
+        df[fecha_col] = pd.to_datetime(df[fecha_col], errors="coerce", utc=True)
+        df[fecha_col] = df[fecha_col].dt.tz_convert(None).dt.normalize()
+        df = df.dropna(subset=[fecha_col]).sort_values(fecha_col).copy()
+        df = df.drop_duplicates(subset=[fecha_col], keep="last").copy()
+
+        # clave numérica para merge_asof
+        df["_merge_key"] = df[fecha_col].astype("int64")
         return df
 
     out = df_plot[["fecha", "precio_promedio"]].copy()
-    out = _prep_fecha(out, "fecha")
+    out = _prep_df(out, "fecha")
 
     if out.empty:
         return pd.DataFrame(columns=[
@@ -1280,12 +1278,12 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
     ofi_df = fetch_dolar_oficial_bcra(start_date=start_date)
 
     if not ccl_df.empty:
-        ccl_df = _prep_fecha(ccl_df, "fecha")
+        ccl_df = _prep_df(ccl_df, "fecha")
         if not ccl_df.empty:
             out = pd.merge_asof(
-                out,
-                ccl_df,
-                on="fecha",
+                out.sort_values("_merge_key"),
+                ccl_df.sort_values("_merge_key")[["_merge_key", "ccl_ypf"]],
+                on="_merge_key",
                 direction="backward"
             )
         else:
@@ -1294,12 +1292,12 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
         out["ccl_ypf"] = np.nan
 
     if not ofi_df.empty:
-        ofi_df = _prep_fecha(ofi_df, "fecha")
+        ofi_df = _prep_df(ofi_df, "fecha")
         if not ofi_df.empty:
             out = pd.merge_asof(
-                out,
-                ofi_df,
-                on="fecha",
+                out.sort_values("_merge_key"),
+                ofi_df.sort_values("_merge_key")[["_merge_key", "oficial"]],
+                on="_merge_key",
                 direction="backward"
             )
         else:
@@ -1311,6 +1309,8 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
     out["usd_oficial"] = out["precio_promedio"] / out["oficial"]
 
     out = out.replace([np.inf, -np.inf], np.nan)
+    out = out.drop(columns=["_merge_key"], errors="ignore")
+
     return out
 
 def apply_range_filter(df: pd.DataFrame, fecha_col: str, rango: str) -> pd.DataFrame:
