@@ -1253,16 +1253,26 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
     if df_plot.empty:
         return pd.DataFrame()
 
+    def _prep_fecha(df: pd.DataFrame, col: str = "fecha") -> pd.DataFrame:
+        df = df.copy()
+        df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
+        df[col] = df[col].dt.tz_localize(None)
+        df[col] = df[col].dt.normalize()
+        df = (
+            df.dropna(subset=[col])
+              .sort_values(col)
+              .drop_duplicates(subset=[col], keep="last")
+              .copy()
+        )
+        return df
+
     out = df_plot[["fecha", "precio_promedio"]].copy()
-    out["fecha"] = pd.to_datetime(out["fecha"], errors="coerce")
-    out = (
-        out.dropna(subset=["fecha"])
-           .sort_values("fecha")
-           .copy()
-    )
+    out = _prep_fecha(out, "fecha")
 
     if out.empty:
-        return pd.DataFrame(columns=["fecha", "precio_promedio", "ccl_ypf", "oficial", "usd_ccl", "usd_oficial"])
+        return pd.DataFrame(columns=[
+            "fecha", "precio_promedio", "ccl_ypf", "oficial", "usd_ccl", "usd_oficial"
+        ])
 
     start_date = out["fecha"].min() - pd.Timedelta(days=15)
 
@@ -1270,19 +1280,11 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
     ofi_df = fetch_dolar_oficial_bcra(start_date=start_date)
 
     if not ccl_df.empty:
-        ccl_df = ccl_df.copy()
-        ccl_df["fecha"] = pd.to_datetime(ccl_df["fecha"], errors="coerce")
-        ccl_df = (
-            ccl_df.dropna(subset=["fecha"])
-                  .sort_values("fecha")
-                  .drop_duplicates(subset=["fecha"], keep="last")
-                  .copy()
-        )
-
+        ccl_df = _prep_fecha(ccl_df, "fecha")
         if not ccl_df.empty:
             out = pd.merge_asof(
-                out.sort_values("fecha"),
-                ccl_df.sort_values("fecha"),
+                out,
+                ccl_df,
                 on="fecha",
                 direction="backward"
             )
@@ -1292,19 +1294,11 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
         out["ccl_ypf"] = np.nan
 
     if not ofi_df.empty:
-        ofi_df = ofi_df.copy()
-        ofi_df["fecha"] = pd.to_datetime(ofi_df["fecha"], errors="coerce")
-        ofi_df = (
-            ofi_df.dropna(subset=["fecha"])
-                  .sort_values("fecha")
-                  .drop_duplicates(subset=["fecha"], keep="last")
-                  .copy()
-        )
-
+        ofi_df = _prep_fecha(ofi_df, "fecha")
         if not ofi_df.empty:
             out = pd.merge_asof(
-                out.sort_values("fecha"),
-                ofi_df.sort_values("fecha"),
+                out,
+                ofi_df,
                 on="fecha",
                 direction="backward"
             )
@@ -1318,7 +1312,6 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
 
     out = out.replace([np.inf, -np.inf], np.nan)
     return out
-
 
 def apply_range_filter(df: pd.DataFrame, fecha_col: str, rango: str) -> pd.DataFrame:
     if df.empty:
