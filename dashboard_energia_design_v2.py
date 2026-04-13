@@ -1313,23 +1313,6 @@ def build_combustible_fx_df(df_plot: pd.DataFrame) -> pd.DataFrame:
 
     return out
 
-def apply_range_filter(df: pd.DataFrame, fecha_col: str, rango: str) -> pd.DataFrame:
-    if df.empty:
-        return df.copy()
-
-    fecha_max = df[fecha_col].max()
-
-    if rango == "1M":
-        return df[df[fecha_col] >= fecha_max - pd.DateOffset(months=1)].copy()
-    elif rango == "3M":
-        return df[df[fecha_col] >= fecha_max - pd.DateOffset(months=3)].copy()
-    elif rango == "6M":
-        return df[df[fecha_col] >= fecha_max - pd.DateOffset(months=6)].copy()
-    elif rango == "1A":
-        return df[df[fecha_col] >= fecha_max - pd.DateOffset(years=1)].copy()
-    return df.copy()
-
-
 def apply_date_slider_filter(df: pd.DataFrame, fecha_col: str, slider_range) -> pd.DataFrame:
     if df.empty or slider_range is None:
         return df.copy()
@@ -1671,14 +1654,6 @@ with tab_ar:
     st.markdown('<div class="panel"><div class="panel-title">Serie histórica</div>', unsafe_allow_html=True)
 
     c1, c2 = st.columns([1.25, 1])
-    with c1:
-        rango_ars = st.radio(
-            "Rango gráfico ARS",
-            ["1M", "3M", "6M", "1A", "Todo"],
-            horizontal=True,
-            index=3,
-            key="rango_combustibles_ars"
-        )
     with c2:
         mostrar_ma7_ars = st.checkbox(
             "Mostrar media móvil 7d (ARS)",
@@ -1686,7 +1661,7 @@ with tab_ar:
             key="ma7_combustibles_ars"
         )
 
-    df_chart_ars = apply_range_filter(df_plot, "fecha", rango_ars)
+    df_chart_ars = df_plot.copy()
 
     fechas_ars = sorted(df_chart_ars["fecha"].dropna().unique().tolist())
     if len(fechas_ars) >= 2:
@@ -1776,7 +1751,7 @@ with tab_ar:
         unsafe_allow_html=True
     )
 
-    fx1, fx2, fx3 = st.columns([1.1, 1.2, 1])
+    fx1, fx2 = st.columns([1.2, 1])
     with fx1:
         fx_mode = st.selectbox(
             "Tipo de cambio",
@@ -1785,21 +1760,13 @@ with tab_ar:
             key="fx_mode_combustibles"
         )
     with fx2:
-        rango_fx = st.radio(
-            "Rango gráfico USD",
-            ["1M", "3M", "6M", "1A", "Todo"],
-            horizontal=True,
-            index=3,
-            key="rango_combustibles_fx"
-        )
-    with fx3:
         mostrar_ma7_fx = st.checkbox(
             "Mostrar media móvil 7d (USD)",
             value=True,
             key="ma7_combustibles_fx"
         )
 
-    df_fx = apply_range_filter(df_fx_base, "fecha", rango_fx)
+    df_fx = df_fx_base.copy()
 
     fechas_fx = sorted(df_fx["fecha"].dropna().unique().tolist())
     if len(fechas_fx) >= 2:
